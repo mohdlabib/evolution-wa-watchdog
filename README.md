@@ -1,6 +1,6 @@
 # Evolution WA Watchdog
 
-Worker ringan untuk memantau semua instance WhatsApp di Evolution API dan mengirim alert WhatsApp saat ada instance terputus.
+Worker ringan untuk memantau semua instance WhatsApp di Evolution API dan mengirim alert Digichat secara private ke nomor owner masing-masing instance saat instance tersebut terputus.
 
 ## Kenapa polling, bukan webhook?
 
@@ -14,9 +14,11 @@ Webhook bagus untuk event pesan, tetapi status disconnect/reconnect instance tid
 
 - Node.js worker tanpa dependency berat.
 - Cek semua instance Evolution API berkala.
-- Alert WhatsApp saat status instance `disconnected` atau `unknown`.
-- Anti-spam cooldown per instance.
-- Recovery alert saat instance connect lagi.
+- Alert Digichat saat status instance `disconnected` atau `unknown`.
+- Private routing: alert instance A dikirim hanya ke nomor owner instance A dari `ownerJid`.
+- Tidak ada broadcast/campur data antar instance/customer.
+- Disconnect alert dikirim 1x per episode; tidak diulang selama masih down.
+- Recovery alert default mati agar chat tidak ramai.
 - State persistence via JSON volume `/app/data/state.json`.
 - Health endpoint untuk Coolify: `/health` dan `/status`.
 - Secret via ENV, tidak hardcode di repo.
@@ -28,14 +30,15 @@ Copy dari `.env.example` dan isi di Coolify:
 
 ```env
 EVOLUTION_BASE_URL=https://wa-api.taro.web.id
-EVOLUTION_API_KEY=isi-di-coolify
+EVOLUTION_API_KEY=isi-di-env-private
 ALERT_SENDER_INSTANCE=test-bot
-ALERT_RECIPIENT_NUMBER=083185730662
+ALERT_RECIPIENT_NUMBER=
 POLL_INTERVAL_SECONDS=60
 ALERT_COOLDOWN_SECONDS=900
-SEND_RECOVERY_ALERTS=true
+SEND_RECOVERY_ALERTS=false
 SEND_STARTUP_SUMMARY=false
 IGNORE_INSTANCES=
+EXCLUDED_INSTANCES=test-bot
 STATE_FILE=/app/data/state.json
 PORT=8080
 DRY_RUN=false
@@ -44,9 +47,10 @@ REQUEST_TIMEOUT_MS=15000
 
 Catatan:
 
-- `ALERT_SENDER_INSTANCE` adalah instance yang dipakai untuk mengirim alert. Untuk project ini: `test-bot`.
-- `ALERT_RECIPIENT_NUMBER` bisa pakai format lokal `083...`; worker otomatis ubah ke `628...`.
-- `IGNORE_INSTANCES` bisa diisi comma-separated, misalnya `test-bot,wa-dev` kalau tidak mau dipantau.
+- `ALERT_SENDER_INSTANCE` adalah instance sehat yang dipakai untuk mengirim alert. Untuk project ini: `test-bot`.
+- Alert tidak dikirim ke `ALERT_RECIPIENT_NUMBER`; mode private memakai `ownerJid` dari tiap instance (`628...@s.whatsapp.net`) lalu dikirim hanya ke nomor owner instance tersebut.
+- `EXCLUDED_INSTANCES` wajib berisi sender seperti `test-bot` agar pengirim alert tidak ikut dimonitor.
+- `IGNORE_INSTANCES` bisa diisi comma-separated untuk exclude tambahan, misalnya `wa-dev,wa-internal`.
 - Untuk percobaan aman, set `DRY_RUN=true` dulu.
 
 ## Jalankan lokal
@@ -77,13 +81,17 @@ curl http://localhost:8080/status
 6. Set health check path: `/health`.
 7. Deploy.
 
-## Cara kerja alert
+## Cara kerja alert private
 
 1. Worker fetch semua instance.
-2. Worker cek `connectionState` per instance.
-3. Jika status berubah dari connected/baru menjadi disconnected/unknown, worker kirim alert.
-4. Jika masih down, worker tidak spam; hanya kirim ulang setelah cooldown.
-5. Jika reconnect, worker kirim recovery alert jika `SEND_RECOVERY_ALERTS=true`.
+2. Worker membaca nomor owner dari `ownerJid` tiap instance.
+3. Worker cek `connectionState` per instance.
+4. Jika instance A berubah menjadi disconnected/unknown, worker kirim *Digichat Alert* hanya ke nomor owner instance A.
+5. Jika instance B juga terputus, worker kirim pesan terpisah hanya ke owner instance B.
+6. Jika masih down, worker tidak spam; tidak kirim ulang selama masih satu episode disconnect.
+7. Recovery alert default mati (`SEND_RECOVERY_ALERTS=false`) agar chat customer tidak ramai.
+
+Privacy rule: tidak ada pesan yang berisi daftar semua instance/customer, dan tidak ada alert lintas-customer.
 
 ## Keamanan
 

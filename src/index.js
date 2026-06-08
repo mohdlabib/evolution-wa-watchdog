@@ -17,11 +17,12 @@ export class WatchdogWorker {
     this.lastHealth = { ok: true, lastCheckAt: null, error: null, summary: [] };
   }
 
-  async sendAlert(text) {
-    const number = normalizePhoneNumber(this.config.alertRecipientNumber);
+  async sendAlert(text, recipientNumber) {
+    const number = normalizePhoneNumber(recipientNumber);
+    if (!number) throw new Error('Missing private recipient owner number');
     if (this.config.dryRun) {
       this.logger.log(`[DRY RUN] Alert to ${number}: ${text.split('\n')[0]}`);
-      return { dryRun: true };
+      return { dryRun: true, number };
     }
     return this.client.sendText(this.config.alertSenderInstance, number, text);
   }
@@ -29,7 +30,6 @@ export class WatchdogWorker {
   async checkOnce() {
     const now = new Date();
     const checkedAt = now.toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' }) + ' WIB';
-    const nowMs = now.getTime();
     const ignored = new Set(this.config.ignoredInstances);
     const instances = await this.client.fetchInstances();
     const summaries = [];
@@ -50,25 +50,33 @@ export class WatchdogWorker {
       summaries.push(summary);
 
       const previous = this.state.instances[name] || {};
-      const lastAlertAt = this.state.alerts[name]?.lastAlertAt || null;
+      const alertRecord = this.state.alerts[name] || {};
 
       if (shouldSendAlert({
         previousState: previous.state,
         currentState: summary.state,
-        lastAlertAt,
-        nowMs,
-        cooldownMs: this.config.alertCooldownMs,
+        lastRecipientNumber: alertRecord.lastRecipientNumber,
+        currentRecipientNumber: summary.ownerNumber,
       })) {
-        await this.sendAlert(buildDownMessage({
-          instance: name,
-          previousState: previous.state,
-          rawState: summary.rawState,
-          checkedAt,
-        }));
-        this.state.alerts[name] = { lastAlertAt: now.toISOString(), lastStatus: summary.state };
-        alertCount++;
+        if (!summary.ownerNumber) {
+          this.logger.warn(`[SKIP] ${name} is down but owner number is missing`);
+        } else {
+          await this.sendAlert(buildDownMessage({
+            instance: name,
+            profileName: summary.profileName,
+            checkedAt,
+          }), summary.ownerNumber);
+          this.state.alerts[name] = {
+            lastAlertAt: now.toISOString(),
+            lastStatus: summary.state,
+            lastRecipientNumber: summary.ownerNumber,
+          };
+          alertCount++;
+        }
       } else if (this.config.sendRecoveryAlerts && shouldSendRecovery({ previousState: previous.state, currentState: summary.state })) {
-        await this.sendAlert(buildRecoveryMessage({ instance: name, checkedAt }));
+        if (summary.ownerNumber) {
+          await this.sendAlert(buildRecoveryMessage({ instance: name, checkedAt }), summary.ownerNumber);
+        }
       }
 
       this.state.instances[name] = {
@@ -77,12 +85,8 @@ export class WatchdogWorker {
       };
     }
 
-    if (this.config.sendStartupSummary && !this.state.startupSummarySent) {
-      const connected = summaries.filter((s) => s.state === 'connected').length;
-      const disconnected = summaries.length - connected;
-      await this.sendAlert(buildStartupMessage({ connected, disconnected, checkedAt }));
-      this.state.startupSummarySent = true;
-    }
+    // Privacy rule: do not send a global startup summary because it can mix multiple customers.
+    // Each disconnect alert is sent only to the owner number of that specific instance.
 
     this.state.lastCheckAt = now.toISOString();
     this.state.lastSummary = summaries;

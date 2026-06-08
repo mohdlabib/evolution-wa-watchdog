@@ -11,6 +11,45 @@ export function instanceName(instance) {
   return instance?.name || instance?.instanceName || instance?.instance?.instanceName || instance?.instance?.instance || instance?.instance || instance?.id || 'unknown';
 }
 
+export function extractOwnerJid(instance, statePayload = null) {
+  return instance?.ownerJid
+    || instance?.jid
+    || instance?.remoteJid
+    || instance?.instance?.ownerJid
+    || statePayload?.ownerJid
+    || statePayload?.jid
+    || statePayload?.remoteJid
+    || statePayload?.instance?.ownerJid
+    || null;
+}
+
+export function extractOwnerNumber(instance, statePayload = null) {
+  const direct = instance?.number
+    || instance?.phone
+    || instance?.phoneNumber
+    || instance?.ownerNumber
+    || instance?.instance?.number
+    || statePayload?.number
+    || statePayload?.phone
+    || statePayload?.phoneNumber
+    || statePayload?.ownerNumber
+    || statePayload?.instance?.number;
+  const fromJid = extractOwnerJid(instance, statePayload);
+  return normalizePhoneNumber(direct || fromJid || '');
+}
+
+export function profileName(instance, statePayload = null) {
+  return instance?.profileName
+    || instance?.pushName
+    || instance?.ownerName
+    || instance?.instance?.profileName
+    || statePayload?.profileName
+    || statePayload?.pushName
+    || statePayload?.ownerName
+    || statePayload?.instance?.profileName
+    || null;
+}
+
 export function extractRawState(payload) {
   if (!payload) return 'unknown';
   if (typeof payload === 'string') return payload;
@@ -39,9 +78,11 @@ export function summarizeInstance(instance, statePayload = null) {
   const raw = statePayload ? extractRawState(statePayload) : extractRawState(instance);
   return {
     name: instanceName(instance),
+    profileName: profileName(instance, statePayload),
     rawState: raw,
     state: normalizeConnectionState(raw),
-    ownerJid: instance?.ownerJid || instance?.instance?.ownerJid || statePayload?.ownerJid || statePayload?.instance?.ownerJid || null,
+    ownerJid: extractOwnerJid(instance, statePayload),
+    ownerNumber: extractOwnerNumber(instance, statePayload),
   };
 }
 

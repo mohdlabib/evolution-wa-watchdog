@@ -1,29 +1,34 @@
 import { isDisconnectedState } from './status.js';
 
-export function shouldSendAlert({ previousState, currentState }) {
+export function shouldSendAlert({ previousState, currentState, lastRecipientNumber, currentRecipientNumber }) {
   const currentlyDown = isDisconnectedState(currentState);
   if (!currentlyDown) return false;
 
-  // Send exactly once per disconnect episode.
-  // Do not repeat while the instance stays disconnected, even after hours/days.
-  return !previousState || !isDisconnectedState(previousState);
+  const wasUpOrNew = !previousState || !isDisconnectedState(previousState);
+  if (wasUpOrNew) return true;
+
+  // If the alert-routing policy changed, send once to the correct private owner number,
+  // then persist lastRecipientNumber so it will not repeat while still disconnected.
+  return Boolean(currentRecipientNumber) && lastRecipientNumber !== currentRecipientNumber;
 }
 
 export function shouldSendRecovery({ previousState, currentState }) {
   return isDisconnectedState(previousState) && currentState === 'connected';
 }
 
-export function buildDownMessage({ instance, previousState, rawState, checkedAt }) {
+export function buildDownMessage({ instance, profileName, checkedAt }) {
+  const displayName = profileName ? `${profileName} (${instance})` : instance;
   return [
-    '🚨 *WA Watchdog Alert*',
+    '🚨 *Digichat Alert*',
     '',
-    `Instance: *${instance}*`,
-    `Status: *TERPUTUS / TIDAK CONNECT*`,
-    previousState ? `Sebelumnya: ${previousState}` : 'Sebelumnya: belum ada data',
-    `Raw state: ${rawState || '-'}`,
+    `Halo, kami mendeteksi koneksi WhatsApp *${displayName}* sedang terputus.`,
+    '',
+    'Status: *Tidak Terhubung*',
     `Waktu: ${checkedAt}`,
     '',
-    'Mohon cek QR/login Evolution API atau koneksi instance tersebut.',
+    'Silakan scan ulang QR / login kembali di dashboard Digichat agar layanan dapat berjalan normal lagi.',
+    '',
+    '_Pesan ini otomatis dan hanya dikirim ke nomor pemilik instance terkait._',
   ].join('\n');
 }
 

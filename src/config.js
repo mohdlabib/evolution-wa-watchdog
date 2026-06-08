@@ -51,7 +51,7 @@ export function buildConfig(env = process.env) {
     evolutionBaseUrl: requireEnv(env, 'EVOLUTION_BASE_URL').replace(/\/+$/, ''),
     evolutionApiKey: requireEnv(env, 'EVOLUTION_API_KEY'),
     alertSenderInstance,
-    alertRecipientNumber: requireEnv(env, 'ALERT_RECIPIENT_NUMBER'),
+    alertRecipientNumber: env.ALERT_RECIPIENT_NUMBER || '',
     ignoredInstances: [...excludedInstances],
     pollIntervalMs: Math.max(10, pollIntervalSeconds) * 1000,
     alertCooldownMs: Math.max(60, alertCooldownSeconds) * 1000,
