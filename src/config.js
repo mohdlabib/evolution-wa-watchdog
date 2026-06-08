@@ -40,17 +40,24 @@ export function buildConfig(env = process.env) {
   const pollIntervalSeconds = Number(env.POLL_INTERVAL_SECONDS || 60);
   const alertCooldownSeconds = Number(env.ALERT_COOLDOWN_SECONDS || 900);
 
+  const alertSenderInstance = requireEnv(env, 'ALERT_SENDER_INSTANCE');
+  const excludedInstances = new Set([
+    ...parseList(env.IGNORE_INSTANCES),
+    ...parseList(env.EXCLUDED_INSTANCES),
+    alertSenderInstance,
+  ]);
+
   return {
     evolutionBaseUrl: requireEnv(env, 'EVOLUTION_BASE_URL').replace(/\/+$/, ''),
     evolutionApiKey: requireEnv(env, 'EVOLUTION_API_KEY'),
-    alertSenderInstance: requireEnv(env, 'ALERT_SENDER_INSTANCE'),
+    alertSenderInstance,
     alertRecipientNumber: requireEnv(env, 'ALERT_RECIPIENT_NUMBER'),
-    ignoredInstances: parseList(env.IGNORE_INSTANCES),
+    ignoredInstances: [...excludedInstances],
     pollIntervalMs: Math.max(10, pollIntervalSeconds) * 1000,
     alertCooldownMs: Math.max(60, alertCooldownSeconds) * 1000,
     stateFile: env.STATE_FILE || './data/state.json',
     port: Number(env.PORT || 8080),
-    sendRecoveryAlerts: parseBool(env.SEND_RECOVERY_ALERTS, true),
+    sendRecoveryAlerts: parseBool(env.SEND_RECOVERY_ALERTS, false),
     sendStartupSummary: parseBool(env.SEND_STARTUP_SUMMARY, false),
     dryRun: parseBool(env.DRY_RUN, false),
     requestTimeoutMs: Number(env.REQUEST_TIMEOUT_MS || 15000),
