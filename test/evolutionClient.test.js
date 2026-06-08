@@ -13,6 +13,7 @@ test('fetchInstances accepts array response', async () => {
   assert.equal(instances[0].name, 'wa-1');
   assert.equal(calls[0].url, 'https://example.com/instance/fetchInstances');
   assert.equal(calls[0].opts.headers.apikey, 'secret');
+  assert.match(calls[0].opts.headers['User-Agent'], /Mozilla\/5\.0/);
 });
 
 test('sendText posts expected Evolution payload', async () => {

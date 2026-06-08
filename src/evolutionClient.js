@@ -1,9 +1,16 @@
 export class EvolutionClient {
-  constructor({ baseUrl, apiKey, timeoutMs = 15000, fetchImpl = globalThis.fetch }) {
+  constructor({
+    baseUrl,
+    apiKey,
+    timeoutMs = 15000,
+    userAgent = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120 Safari/537.36 Evolution-WA-Watchdog/1.0',
+    fetchImpl = globalThis.fetch,
+  }) {
     if (!fetchImpl) throw new Error('fetch API is required');
     this.baseUrl = baseUrl.replace(/\/+$/, '');
     this.apiKey = apiKey;
     this.timeoutMs = timeoutMs;
+    this.userAgent = userAgent;
     this.fetch = fetchImpl;
   }
 
@@ -16,6 +23,7 @@ export class EvolutionClient {
         headers: {
           apikey: this.apiKey,
           'Content-Type': 'application/json',
+          'User-Agent': this.userAgent,
         },
         body: body === undefined ? undefined : JSON.stringify(body),
         signal: controller.signal,
