@@ -118,8 +118,9 @@ export class WatchdogWorker {
 export function createHealthServer(worker, port) {
   const server = http.createServer((req, res) => {
     if (req.url === '/health') {
-      res.writeHead(worker.lastHealth.ok ? 200 : 503, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(worker.lastHealth));
+      // Liveness healthcheck for orchestrators/Coolify. Dependency status is exposed on /status.
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ alive: true, ...worker.lastHealth }));
       return;
     }
     if (req.url === '/status') {
