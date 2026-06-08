@@ -22,14 +22,14 @@ test('do not spam repeated disconnected alerts inside cooldown', () => {
   }), false);
 });
 
-test('send reminder alert after cooldown if still disconnected', () => {
+test('never send repeated disconnected alerts while still down', () => {
   assert.equal(shouldSendAlert({
     previousState: 'disconnected',
     currentState: 'disconnected',
     lastAlertAt: new Date(1000).toISOString(),
     nowMs: 901001,
     cooldownMs: 900000,
-  }), true);
+  }), false);
 });
 
 test('send recovery only when moving from down to connected', () => {

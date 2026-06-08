@@ -1,13 +1,12 @@
 import { isDisconnectedState } from './status.js';
 
-export function shouldSendAlert({ previousState, currentState, lastAlertAt, nowMs, cooldownMs }) {
+export function shouldSendAlert({ previousState, currentState }) {
   const currentlyDown = isDisconnectedState(currentState);
   if (!currentlyDown) return false;
 
-  const wasUpOrNew = !previousState || !isDisconnectedState(previousState);
-  const cooldownExpired = !lastAlertAt || (nowMs - new Date(lastAlertAt).getTime()) >= cooldownMs;
-
-  return wasUpOrNew || cooldownExpired;
+  // Send exactly once per disconnect episode.
+  // Do not repeat while the instance stays disconnected, even after hours/days.
+  return !previousState || !isDisconnectedState(previousState);
 }
 
 export function shouldSendRecovery({ previousState, currentState }) {
