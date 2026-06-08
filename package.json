@@ -1,0 +1,21 @@
+{
+  "name": "evolution-wa-watchdog",
+  "version": "1.0.0",
+  "description": "Lightweight Evolution API WhatsApp instance watchdog with WA alerts",
+  "main": "index.js",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test",
+    "check": "node --check src/*.js test/*.test.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  }
+}
