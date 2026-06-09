@@ -17,7 +17,10 @@ Webhook bagus untuk event pesan, tetapi status disconnect/reconnect instance tid
 - Alert Digichat saat status instance `disconnected` atau `unknown`.
 - Private routing: alert instance A dikirim hanya ke nomor owner instance A dari `ownerJid`.
 - Tidak ada broadcast/campur data antar instance/customer.
+- Grace period: alert hanya dikirim jika instance terputus terus-menerus minimal 2 menit (`DISCONNECT_GRACE_SECONDS`), agar tidak sensitif ke gangguan sesaat.
 - Disconnect alert dikirim 1x per episode; tidak diulang selama masih down.
+- Notifikasi otomatis di-reset saat instance terhubung kembali, sehingga putus berikutnya dialert lagi.
+- Data instance yang dihapus dari Evolution otomatis ikut terhapus dari state.
 - Recovery alert default mati agar chat tidak ramai.
 - State persistence via JSON volume `/app/data/state.json`.
 - Health endpoint untuk Coolify: `/health` dan `/status`.
@@ -35,6 +38,7 @@ ALERT_SENDER_INSTANCE=test-bot
 ALERT_RECIPIENT_NUMBER=
 POLL_INTERVAL_SECONDS=60
 ALERT_COOLDOWN_SECONDS=900
+DISCONNECT_GRACE_SECONDS=120
 SEND_RECOVERY_ALERTS=false
 SEND_STARTUP_SUMMARY=false
 IGNORE_INSTANCES=
@@ -86,10 +90,12 @@ curl http://localhost:8080/status
 1. Worker fetch semua instance.
 2. Worker membaca nomor owner dari `ownerJid` tiap instance.
 3. Worker cek `connectionState` per instance.
-4. Jika instance A berubah menjadi disconnected/unknown, worker kirim *Digichat Alert* hanya ke nomor owner instance A.
+4. Jika instance A terputus, worker mulai menghitung durasi disconnect. Alert *Digichat Alert* baru dikirim ke owner instance A setelah putus terus-menerus minimal `DISCONNECT_GRACE_SECONDS` (default 2 menit).
 5. Jika instance B juga terputus, worker kirim pesan terpisah hanya ke owner instance B.
-6. Jika masih down, worker tidak spam; tidak kirim ulang selama masih satu episode disconnect.
-7. Recovery alert default mati (`SEND_RECOVERY_ALERTS=false`) agar chat customer tidak ramai.
+6. Jika masih down, worker tidak spam; alert dikirim sekali saja per episode disconnect.
+7. Saat instance terhubung kembali, catatan alert-nya dihapus (reset), sehingga jika putus lagi nanti akan dialert ulang.
+8. Instance yang dihapus dari Evolution otomatis dibersihkan dari state (data ikut terhapus).
+9. Recovery alert default mati (`SEND_RECOVERY_ALERTS=false`) agar chat customer tidak ramai.
 
 Privacy rule: tidak ada pesan yang berisi daftar semua instance/customer, dan tidak ada alert lintas-customer.
 

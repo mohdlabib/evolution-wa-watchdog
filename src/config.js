@@ -39,6 +39,11 @@ export function requireEnv(env, key) {
 export function buildConfig(env = process.env) {
   const pollIntervalSeconds = Number(env.POLL_INTERVAL_SECONDS || 60);
   const alertCooldownSeconds = Number(env.ALERT_COOLDOWN_SECONDS || 900);
+  const disconnectGraceSeconds = Number(
+    env.DISCONNECT_GRACE_SECONDS === undefined || env.DISCONNECT_GRACE_SECONDS === ''
+      ? 120
+      : env.DISCONNECT_GRACE_SECONDS,
+  );
 
   const alertSenderInstance = requireEnv(env, 'ALERT_SENDER_INSTANCE');
   const excludedInstances = new Set([
@@ -55,6 +60,9 @@ export function buildConfig(env = process.env) {
     ignoredInstances: [...excludedInstances],
     pollIntervalMs: Math.max(10, pollIntervalSeconds) * 1000,
     alertCooldownMs: Math.max(60, alertCooldownSeconds) * 1000,
+    // Grace period: instance harus terputus terus-menerus selama durasi ini
+    // sebelum alert dikirim, supaya tidak sensitif terhadap gangguan sesaat.
+    disconnectGraceMs: Math.max(0, Number.isFinite(disconnectGraceSeconds) ? disconnectGraceSeconds : 120) * 1000,
     stateFile: env.STATE_FILE || './data/state.json',
     port: Number(env.PORT || 8080),
     sendRecoveryAlerts: parseBool(env.SEND_RECOVERY_ALERTS, false),

@@ -20,10 +20,39 @@ function baseConfig() {
     sendStartupSummary: false,
     pollIntervalMs: 60000,
     alertCooldownMs: 900000,
+    disconnectGraceMs: 120000, // 2 menit
   };
 }
 
-test('disconnect alerts are private per instance owner number', async () => {
+test('no alert is sent before the 2-minute grace period elapses', async () => {
+  const sent = [];
+  const client = {
+    async fetchInstances() {
+      return [{ name: 'Customer A', ownerJid: '6281111111111@s.whatsapp.net', connectionStatus: 'close' }];
+    },
+    async connectionState() { return { state: 'close' }; },
+    async sendText(instance, number, text) { sent.push({ instance, number, text }); },
+  };
+
+  let clock = 0;
+  const worker = new WatchdogWorker({
+    config: baseConfig(),
+    client,
+    store: createStore(),
+    logger: { log() {}, warn() {}, error() {} },
+    now: () => clock,
+  });
+
+  // Episode disconnect dimulai, tapi belum 2 menit.
+  await worker.checkOnce();
+  assert.equal(sent.length, 0);
+
+  clock += 60000; // baru 1 menit
+  await worker.checkOnce();
+  assert.equal(sent.length, 0);
+});
+
+test('disconnect alerts are private per instance owner number and sent once after grace', async () => {
   const sent = [];
   const client = {
     async fetchInstances() {
@@ -33,28 +62,39 @@ test('disconnect alerts are private per instance owner number', async () => {
         { name: 'test-bot', ownerJid: '6283333333333@s.whatsapp.net', connectionStatus: 'close' },
       ];
     },
-    async connectionState(name) {
-      return { state: name === 'test-bot' ? 'close' : 'close' };
-    },
+    async connectionState() { return { state: 'close' }; },
     async sendText(instance, number, text) {
       sent.push({ instance, number, text });
       return { ok: true };
     },
   };
 
+  let clock = 1_700_000_000_000;
   const worker = new WatchdogWorker({
     config: baseConfig(),
     client,
     store: createStore(),
     logger: { log() {}, warn() {}, error() {} },
+    now: () => clock,
   });
 
+  // Mulai episode (belum kirim).
+  await worker.checkOnce();
+  assert.equal(sent.length, 0);
+
+  // Lewati grace 2 menit -> alert dikirim privat ke masing-masing owner.
+  clock += 120000;
   await worker.checkOnce();
 
   assert.deepEqual(sent.map((item) => item.number), ['6281111111111', '6282222222222']);
   assert.equal(sent.every((item) => item.instance === 'test-bot'), true);
   assert.equal(sent.every((item) => item.text.includes('Digichat Alert')), true);
   assert.equal(sent.some((item) => item.number === '6280000000000'), false);
+
+  // Cek berikutnya saat masih putus: tidak boleh mengulang alert.
+  clock += 600000;
+  await worker.checkOnce();
+  assert.equal(sent.length, 2);
 });
 
 test('down instance without owner number is skipped instead of sent to another number', async () => {
@@ -66,15 +106,95 @@ test('down instance without owner number is skipped instead of sent to another n
     async sendText(instance, number, text) { sent.push({ instance, number, text }); },
   };
 
+  let clock = 1_700_000_000_000;
   const worker = new WatchdogWorker({
     config: baseConfig(),
     client,
     store: createStore(),
     logger: { log() {}, warn(message) { warnings.push(message); }, error() {} },
+    now: () => clock,
   });
 
+  await worker.checkOnce();
+  clock += 120000;
   await worker.checkOnce();
 
   assert.equal(sent.length, 0);
   assert.equal(warnings.some((message) => message.includes('owner number is missing')), true);
+});
+
+test('reconnect resets the notification so a later disconnect alerts again', async () => {
+  const sent = [];
+  let connState = 'close';
+  const client = {
+    async fetchInstances() {
+      return [{ name: 'Customer A', ownerJid: '6281111111111@s.whatsapp.net' }];
+    },
+    async connectionState() { return { state: connState }; },
+    async sendText(instance, number) { sent.push({ number }); },
+  };
+
+  let clock = 1_700_000_000_000;
+  const worker = new WatchdogWorker({
+    config: baseConfig(),
+    client,
+    store: createStore(),
+    logger: { log() {}, warn() {}, error() {} },
+    now: () => clock,
+  });
+
+  // Episode 1: putus -> lewat grace -> alert #1.
+  await worker.checkOnce();
+  clock += 120000;
+  await worker.checkOnce();
+  assert.equal(sent.length, 1);
+
+  // Reconnect: notifikasi direset.
+  connState = 'open';
+  clock += 60000;
+  await worker.checkOnce();
+  assert.equal(sent.length, 1);
+  assert.equal(worker.state.alerts['Customer A'], undefined);
+
+  // Episode 2: putus lagi -> lewat grace -> alert #2.
+  connState = 'close';
+  clock += 60000;
+  await worker.checkOnce();
+  clock += 120000;
+  await worker.checkOnce();
+  assert.equal(sent.length, 2);
+});
+
+test('state of deleted instances is pruned automatically', async () => {
+  let instances = [
+    { name: 'Customer A', ownerJid: '6281111111111@s.whatsapp.net' },
+    { name: 'Customer B', ownerJid: '6282222222222@s.whatsapp.net' },
+  ];
+  const client = {
+    async fetchInstances() { return instances; },
+    async connectionState() { return { state: 'open' }; },
+    async sendText() {},
+  };
+
+  let clock = 1_700_000_000_000;
+  const worker = new WatchdogWorker({
+    config: baseConfig(),
+    client,
+    store: createStore(),
+    logger: { log() {}, warn() {}, error() {} },
+    now: () => clock,
+  });
+
+  await worker.checkOnce();
+  assert.ok(worker.state.instances['Customer A']);
+  assert.ok(worker.state.instances['Customer B']);
+
+  // Customer B dihapus dari Evolution -> state-nya harus ikut terhapus.
+  instances = [{ name: 'Customer A', ownerJid: '6281111111111@s.whatsapp.net' }];
+  clock += 60000;
+  await worker.checkOnce();
+
+  assert.ok(worker.state.instances['Customer A']);
+  assert.equal(worker.state.instances['Customer B'], undefined);
+  assert.equal(worker.state.alerts['Customer B'], undefined);
 });
